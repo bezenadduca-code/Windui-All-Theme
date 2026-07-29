@@ -1,0 +1,139 @@
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+local function clearOldClothingAndAccessories()
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Clothing") or child:IsA("Shirt") or child:IsA("Pants") or child:IsA("Accessory") or child:IsA("Hat") or child:IsA("ShirtGraphic") then
+            child:Destroy()
+        elseif child:IsA("Model") and child.Name ~= "LegacyMS4_Attached" then
+            child:Destroy()
+        end
+    end
+    print("🧹 Cleared old shirts, pants, hats, and accessories!")
+end
+
+local function scanAndAttachLegacyMS4()
+    local legacyMS4 = replicatedStorage:WaitForChild("Assets"):WaitForChild("Skins"):WaitForChild("Survivors"):WaitForChild("TwoTime"):FindFirstChild("LegacyMS100TwoTime")
+    
+    if not legacyMS4 then
+        warn("❌ LegacyMS100TwoTime not found!")
+        return
+    end
+    
+    local config = legacyMS4:FindFirstChild("Config")
+    if not config then
+        warn("❌ Config folder not found!")
+        return
+    end
+    
+    -- Dynamically detect and select Life2 or Life1
+    local targetModel = config:FindFirstChild("Life2") or config:FindFirstChild("Life1")
+    
+    if not targetModel then
+        warn("❌ Neither Life1 nor Life2 found in Config!")
+        return
+    end
+    
+    print("✅ Found model: " & targetModel.Name)
+    
+    -- Clear old clothing and accessories first
+    clearOldClothingAndAccessories()
+    
+    -- Remove old custom attachments if any
+    local old = character:FindFirstChild("LegacyMS4_Attached")
+    if old then old:Destroy() end
+    
+    local folder = Instance.new("Folder")
+    folder.Name = "LegacyMS4_Attached"
+    folder.Parent = character
+    
+    -- Get character body parts (handling R6/R15 variants)
+    local charParts = {}
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            charParts[part.Name] = part
+        end
+    end
+    
+    local torso = charParts["Torso"] or charParts["UpperTorso"] or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    local head = charParts["Head"] or character:FindFirstChild("Head")
+    local leftArm = charParts["Left Arm"] or charParts["LeftUpperArm"] or character:FindFirstChild("Left Arm") or character:FindFirstChild("LeftUpperArm")
+    local rightArm = charParts["Right Arm"] or charParts["RightUpperArm"] or character:FindFirstChild("Right Arm") or character:FindFirstChild("RightUpperArm")
+    local leftLeg = charParts["Left Leg"] or charParts["LeftLowerLeg"] or character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftLowerLeg")
+    local rightLeg = charParts["Right Leg"] or charParts["RightLowerLeg"] or character:FindFirstChild("Right Leg") or character:FindFirstChild("RightLowerLeg")
+    local root = charParts["HumanoidRootPart"] or character:FindFirstChild("HumanoidRootPart")
+    
+    if not torso or not head then
+        warn("❌ Essential character parts not found!")
+        return
+    end
+    
+    local modelPivot = targetModel:GetPivot()
+    local attachedCount = 0
+    
+    for _, part in ipairs(targetModel:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local partName = part.Name
+            
+            -- SKIP any hitbox, collision, or query parts so your original hitboxes stay completely untouched
+            if string.find(partName, "Hitbox") or string.find(partName, "Collision") or string.find(partName, "Detector") or string.find(partName, "Query") or string.find(partName, "Holder") then
+                continue
+            end
+            
+            local target = nil
+            if partName == "Head" or partName == "hair" or partName == "halo" or partName == "mask" or partName == "hat" then
+                target = head
+            elseif partName == "Torso" or partName == "graphic" or partName == "belt" or partName == "scarf" or partName == "chest" or partName == "tail" or partName == "wings" or partName == "wing1" or partName == "wing2" then
+                target = torso
+            elseif string.find(partName, "Left") or string.find(partName, "left") then
+                if string.find(partName, "Leg") then target = leftLeg
+                elseif string.find(partName, "Arm") or string.find(partName, "Hand") or string.find(partName, "Glove") or string.find(partName, "Bandage") then target = leftArm
+                else target = torso end
+            elseif string.find(partName, "Right") or string.find(partName, "right") then
+                if string.find(partName, "Leg") then target = rightLeg
+                elseif string.find(partName, "Arm") or string.find(partName, "Hand") or string.find(partName, "Glove") or string.find(partName, "Bandage") then target = rightArm
+                else target = torso end
+            elseif string.find(partName, "Ghostfire") or string.find(partName, "Weapon") or string.find(partName, "Blade") or string.find(partName, "Handle") then
+                target = rightArm
+            else
+                target = torso
+            end
+            
+            if target then
+                local newPart = part:Clone()
+                newPart.Size = part.Size
+                newPart.Transparency = part.Transparency or 0
+                newPart.Color = part.Color or Color3.new(1, 1, 1)
+                newPart.Material = part.Material or Enum.Material.SmoothPlastic
+                newPart.Anchored = false
+                newPart.CanCollide = false
+                
+                local templateTargetPart = targetModel:FindFirstChild(target.Name, true)
+                if templateTargetPart and templateTargetPart:IsA("BasePart") then
+                    local offset = templateTargetPart.CFrame:ToObjectSpace(part.CFrame)
+                    newPart.CFrame = target.CFrame * offset
+                else
+                    local relativeCFrame = modelPivot:ToObjectSpace(part.CFrame)
+                    newPart.CFrame = target.CFrame * relativeCFrame
+                end
+                
+                newPart.Parent = folder
+                
+                local weld = Instance.new("Weld")
+                weld.Part0 = target
+                weld.Part1 = newPart
+                weld.C0 = target.CFrame:ToObjectSpace(newPart.CFrame)
+                weld.Parent = newPart
+                
+                attachedCount = attachedCount + 1
+            end
+        end
+    end
+    
+    print("✅ Successfully attached " .. attachedCount .." cosmetic parts from " .. targetModel.Name .. " (Hitboxes preserved!)")
+    return folder
+end
+
+scanAndAttachLegacyMS4()
+
